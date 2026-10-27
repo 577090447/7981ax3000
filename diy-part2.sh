@@ -32,4 +32,7 @@ sed -i 's/^CONFIG_OPENCLASH_CORE_TYPE=.*/CONFIG_OPENCLASH_CORE_TYPE="binary"/' .
 # ===================== 清理 Rust 残留缓存 =====================
 rm -rf dl/rustc-* dl/cargo-* 2>/dev/null || true
 
+# ===================== 关键：清除同名 defconfig，避免干扰 make defconfig 目标 =====================
+rm -rf defconfig
+
 echo "diy-part2.sh done."

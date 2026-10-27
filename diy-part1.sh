@@ -12,6 +12,9 @@ rm -rf package/luci-app-harbor-file
 rm -rf package/luci-app-tcpdump
 rm -rf package/luci-theme-argon
 rm -rf package/luci-app-argon-config
+rm -rf package/luci-theme-vantage      # 含 luci-app-vantage(仪表盘) + luci-theme-vantage(主题)
+rm -rf package/luci-app-vantage        # 仪表盘，跟随仓库一起拉
+rm -rf package/luci-theme-footstrap
 
 # ===================== iStore（官方标准方式 ✅） =====================
 grep -q "src-git istore" feeds.conf.default || \
@@ -32,6 +35,12 @@ git clone --depth=1 https://github.com/KFERMercer/luci-app-tcpdump.git package/l
 # ===================== Argon 主题 + 配置插件 =====================
 git clone --depth=1 https://github.com/jerrykuku/luci-theme-argon package/luci-theme-argon
 git clone --depth=1 https://github.com/jerrykuku/luci-app-argon-config package/luci-app-argon-config
+
+# ===================== Vantage：只要仪表盘（luci-app-vantage），不要主题 =====================
+git clone --depth=1 https://github.com/anothaDev/luci-theme-vantage package/luci-theme-vantage
+
+# ===================== Footstrap 主题（OpenWrt 24.10+） =====================
+git clone --depth=1 https://github.com/VizzleTF/luci-theme-footstrap package/luci-theme-footstrap
 
 # ===================== 不要在这里执行 feeds update/install =====================
 echo "diy-part1.sh done."

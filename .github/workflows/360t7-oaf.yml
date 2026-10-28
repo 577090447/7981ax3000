@@ -1,6 +1,6 @@
 #
 # OpenWrt Builder - 360T7 / MT7981 (7673 + 20260601)
-# 含 HNAT 提示与 dl 缺包加固，已修复 weechat/prosody 依赖冲突
+# 强制剔除 weechat/prosody，补 Lua5.4，官方底+覆盖
 #
 
 name: 360t7-oaf-7981 Builder
@@ -17,18 +17,16 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   TZ: Asia/Shanghai
-  SSH_ACTIONS: false                       # true=开启SSH调试, false=关闭
+  SSH_ACTIONS: false
 
 jobs:
   build:
     runs-on: ubuntu-22.04
 
     steps:
-    # ========== 1. 检出仓库 ==========
     - name: Checkout
       uses: actions/checkout@main
 
-    # ========== 2. 初始化编译环境 ==========
     - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -43,7 +41,6 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    # ========== 3. 克隆源码 ==========
     - name: Clone source code
       working-directory: /workdir
       run: |
@@ -51,7 +48,6 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    # ========== 4. 加载自定义 feeds ==========
     - name: Load custom feeds
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
@@ -59,7 +55,6 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    # ========== 5. 更新 & 安装 feeds（含 Lua 5.4 依赖加固） ==========
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
 
@@ -67,24 +62,27 @@ jobs:
       run: |
         cd openwrt
         ./scripts/feeds install -a
-        # 修复 prosody 缺失 Lua 5.4 依赖警告
-        ./scripts/feeds install luafilesystem5.4 luaexpat5.4 luasec5.4 luasocket5.4
+        # 补 Lua5.4 依赖（防 prosody 警告，虽然后面会关 prosody）
+        ./scripts/feeds install luafilesystem5.4 luaexpat5.4 luasec5.4 luasocket5.4 || true
 
-    # ========== 6. 加载自定义配置（官方底 + 追加单编配置） ==========
     - name: Load custom configuration
       run: |
-        [ -e files ] && mv files openwrt/files
         cd openwrt
-        # 以官方 360T7/MT7981 底为基础，确保设备定义与 DTS 不丢
+        [ -e files ] && mv files files.bak
+        [ -d $GITHUB_WORKSPACE/files ] && cp -r $GITHUB_WORKSPACE/files .
+        # 官方 360T7 底
         cp -f defconfig/mt7981-ax3000.config .config
-        # 追加你的定制项（已含 weechat/prosody 关闭与 360T7 单编项）
-        [ -e $GITHUB_WORKSPACE/$CONFIG_FILE ] && cat $GITHUB_WORKSPACE/$CONFIG_FILE >> .config
+        # 追加你的定制（必须含：关 MULTI_PROFILE、关 weechat/prosody、带 mt7981 固件）
+        cat $GITHUB_WORKSPACE/$CONFIG_FILE >> .config
+        # 强制剔除冲突包（双重保险，不依赖 .config 注释）
+        sed -i 's/CONFIG_PACKAGE_luci-app-weechat=y/# CONFIG_PACKAGE_luci-app-weechat is not set/' .config
+        sed -i 's/CONFIG_PACKAGE_weechat-full=y/# CONFIG_PACKAGE_weechat-full is not set/' .config
+        sed -i 's/CONFIG_PACKAGE_weechat-minimal=y/# CONFIG_PACKAGE_weechat-minimal is not set/' .config
+        sed -i 's/CONFIG_PACKAGE_prosody=y/# CONFIG_PACKAGE_prosody is not set/' .config
         chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
-        # 仅补全依赖，不覆盖已选的 7673 / 20260601
         make olddefconfig
 
-    # ========== 6.5 SSH 编译调试（按需开启） ==========
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@main
       if: env.SSH_ACTIONS == 'true'
@@ -96,7 +94,6 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ========== 7. 下载依赖包（含重试与残缺清理） ==========
     - name: Download package
       run: |
         cd openwrt
@@ -105,12 +102,9 @@ jobs:
           echo "=== download retry $i ===" >&2
           sleep 15
         done
-        # 清理小于1KB的残缺包，避免坏包复用
         find dl -size -1024c -exec rm -f {} \;
-        # 确认关键包齐全
         ls -l dl/ | grep -E 'mt79xx_20250408|warp_20250408|datconf' || echo "::warning::关键dl包可能缺失"
 
-    # ========== 8. 编译固件 ==========
     - name: Compile the firmware
       id: compile
       run: |
@@ -127,7 +121,6 @@ jobs:
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    # ========== 9. 整理固件文件 ==========
     - name: Organize files
       id: organize
       if: steps.compile.outputs.status == 'success'
@@ -137,7 +130,6 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ========== 10. 生成 Release Tag ==========
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success'
@@ -145,7 +137,6 @@ jobs:
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_ENV
 
-    # ========== 11. 上传固件到 Release ==========
     - name: Upload firmware to release
       uses: softprops/action-gh-release@master
       if: steps.tag.outputs.status == 'success'
@@ -156,7 +147,6 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ========== 12. 清理旧 Releases（保留最新 3 个） ==========
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
       if: steps.tag.outputs.status == 'success'

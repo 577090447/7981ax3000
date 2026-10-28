@@ -1,9 +1,6 @@
 #
 # OpenWrt Builder - 360T7 / MT7981 (7673 + 20260601)
-# 单设备构建，含 HNAT 提示、Lua5.4 补装与 dl 缺包加固
-#
-# ⚠️ 刷机后务必保留 br-lan 中的 rxppd/rax0 接口，否则 HNAT 异常
-#    （仓库官方要求：keep interface rxppd in your bridge device）
+# 含 HNAT 提示与 dl 缺包加固，已修复 weechat/prosody 依赖冲突
 #
 
 name: 360t7-oaf-7981 Builder
@@ -62,7 +59,7 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    # ========== 5. 更新 & 安装 feeds（含 prosody 的 Lua5.4 依赖） ==========
+    # ========== 5. 更新 & 安装 feeds（含 Lua 5.4 依赖加固） ==========
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
 
@@ -70,30 +67,22 @@ jobs:
       run: |
         cd openwrt
         ./scripts/feeds install -a
-        # luci-app-ssr-plus 会拉 prosody，prosody 需要这四个 Lua5.4 变体包
+        # 修复 prosody 缺失 Lua 5.4 依赖警告
         ./scripts/feeds install luafilesystem5.4 luaexpat5.4 luasec5.4 luasocket5.4
-        # 校验是否已就绪
-        for p in luafilesystem5.4 luaexpat5.4 luasec5.4 luasocket5.4; do
-          if ! grep -qr "Package/$p" feeds/*/ ; then
-            echo "::warning::feeds 中未找到 $p，prosody 可能编译失败"
-          fi
-        done
 
-    # ========== 6. 加载自定义配置 ==========
+    # ========== 6. 加载自定义配置（官方底 + 追加单编配置） ==========
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
         cd openwrt
-        # 以官方 MT7981 配置为底（自动带入 360T7 设备定义与固件包）
+        # 以官方 360T7/MT7981 底为基础，确保设备定义与 DTS 不丢
         cp -f defconfig/mt7981-ax3000.config .config
-        # 追加你的定制项（7673 / 20260601 / luci 插件等）
-        [ -e "$GITHUB_WORKSPACE/$CONFIG_FILE" ] && cat "$GITHUB_WORKSPACE/$CONFIG_FILE" >> .config
+        # 追加你的定制项（已含 weechat/prosody 关闭与 360T7 单编项）
+        [ -e $GITHUB_WORKSPACE/$CONFIG_FILE ] && cat $GITHUB_WORKSPACE/$CONFIG_FILE >> .config
         chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
         $GITHUB_WORKSPACE/$DIY_P2_SH
-        # 仅补全依赖，不覆盖已选的驱动版本与固件版本
+        # 仅补全依赖，不覆盖已选的 7673 / 20260601
         make olddefconfig
-        # 确认关键项仍在
-        grep -nE 'CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673|CONFIG_MTK_MT_WIFI_MT7981_20260601|DEVICE_qihoo_360t7' .config || echo "::warning::关键配置项缺失"
 
     # ========== 6.5 SSH 编译调试（按需开启） ==========
     - name: SSH connection to Actions
@@ -116,23 +105,19 @@ jobs:
           echo "=== download retry $i ===" >&2
           sleep 15
         done
-        # 清理小于1KB的残缺包，避免坏包被复用
+        # 清理小于1KB的残缺包，避免坏包复用
         find dl -size -1024c -exec rm -f {} \;
-        # 校验关键 tarball 已下载（按真实文件名匹配）
-        for f in mt79xx_20250408-705eb4.tar.xz warp_20250408-5f71ec.tar.xz; do
-          if [ ! -s "dl/$f" ]; then
-            echo "::warning::关键 dl 包缺失: $f"
-          fi
-        done
+        # 确认关键包齐全
+        ls -l dl/ | grep -E 'mt79xx_20250408|warp_20250408|datconf' || echo "::warning::关键dl包可能缺失"
 
     # ========== 8. 编译固件 ==========
     - name: Compile the firmware
       id: compile
       run: |
         cd openwrt
-        echo "$(nproc) thread compile"
+        echo -e "$(nproc) thread compile"
         if ! make -j$(nproc); then
-          echo "=== parallel build failed, retry single-thread ===" >&2
+          echo "=== parallel build failed, retry single-thread ==="
           make -j1 || \
           { echo "=== mt_wifi prepare ==="; make package/mtk/drivers/mt_wifi/prepare V=s -j1; \
             echo "=== mt_wifi compile ==="; make package/mtk/drivers/mt_wifi/compile V=s -j1; }

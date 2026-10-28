@@ -1,7 +1,6 @@
 #
-# OpenWrt Builder - 精简版（仅发布 Release）
-#
-# 触发方式：手动触发 / API 触发
+# OpenWrt Builder - 360T7 / MT7981 (7673 + 20260601)
+# 含 HNAT 提示与 dl 缺包加固
 #
 
 name: 360t7-oaf-7981 Builder
@@ -18,7 +17,7 @@ env:
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   TZ: Asia/Shanghai
-  SSH_ACTIONS: false                       # ← SSH 编译调试开关：true 开启，false 关闭
+  SSH_ACTIONS: false                       # true=开启SSH调试, false=关闭
 
 jobs:
   build:
@@ -75,6 +74,8 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
+        # 仅补全依赖，不覆盖已选的 7673 / 20260601
+        make olddefconfig
 
     # ========== 6.5 SSH 编译调试（按需开启） ==========
     - name: SSH connection to Actions
@@ -88,13 +89,19 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ========== 7. 下载依赖包 ==========
+    # ========== 7. 下载依赖包（含重试与残缺清理） ==========
     - name: Download package
       run: |
         cd openwrt
-        make defconfig
-        make download -j8
+        for i in 1 2 3; do
+          make download -j8 && break
+          echo "=== download retry $i ===" >&2
+          sleep 15
+        done
+        # 清理小于1KB的残缺包，避免坏包复用
         find dl -size -1024c -exec rm -f {} \;
+        # 确认关键包齐全
+        ls -l dl/ | grep -E 'mt79xx_20250408|warp_20250408|datconf' || echo "::warning::关键dl包可能缺失"
 
     # ========== 8. 编译固件 ==========
     - name: Compile the firmware
@@ -102,7 +109,11 @@ jobs:
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        if ! make -j$(nproc); then
+          echo "=== parallel build failed, retry single-thread ==="
+          make -j1 || \
+          { echo "=== mt_wifi detail ==="; make package/mtk/drivers/mt_wifi/prepare V=s -j1; make package/mtk/drivers/mt_wifi/compile V=s -j1; }
+        fi
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV

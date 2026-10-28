@@ -1,6 +1,7 @@
 #
 # OpenWrt Builder - 360T7 / MT7981 (7673 + 20260601)
 # 单设备构建；官方底 + 定制层，真正关闭 MULTI_PROFILE 避免 weechat/prosody 递归依赖
+# 已修复：第 10 步 status 写进 $GITHUB_OUTPUT，使第 11/12 步不再被跳过
 #
 
 name: 360t7-oaf-7981 Builder
@@ -155,16 +156,17 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ========== 10. 生成 Release Tag ==========
+    # ========== 10. 生成 Release Tag（已修复：status 与 release_tag 都写进 $GITHUB_OUTPUT） ==========
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success'
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        echo "status=success" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
-    # ========== 11. 上传固件到 Release ==========
+    # ========== 11. 上传固件到 Release（现在 steps.tag.outputs.status 有值，会真正执行） ==========
     - name: Upload firmware to release
+      id: upload
       uses: softprops/action-gh-release@master
       if: steps.tag.outputs.status == 'success'
       with:
@@ -177,7 +179,7 @@ jobs:
     # ========== 12. 清理旧 Releases（保留最新 3 个） ==========
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
-      if: steps.tag.outputs.status == 'success'
+      if: steps.upload.outputs.status == 'success' || steps.upload.outcome == 'success'
       with:
         keep_latest: 3
         delete_tags: true

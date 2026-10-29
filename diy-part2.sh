@@ -10,11 +10,11 @@ sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_gener
 # ===================== 修改主机名 =====================
 sed -i 's/ImmortalWrt/ARWRT/g' package/base-files/files/bin/config_generate
 
-# ===================== 默认主题：Footstrap（Argon 已整组移除） =====================
+# ===================== 默认主题：Aurora =====================
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-default-theme
 #!/bin/sh
-uci set luci.main.mediaurlbase='/luci-static/footstrap'
+uci set luci.main.mediaurlbase='/luci-static/aurora'
 uci commit luci
 exit 0
 EOF

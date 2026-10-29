@@ -67,9 +67,7 @@ jobs:
       run: |
         cd openwrt
         ./scripts/feeds install -a
-        # 补装 Lua 5.4 变体包：即使关闭了 prosody，feeds 完整性检查也会引用它们
         ./scripts/feeds install luafilesystem5.4 luaexpat5.4 luasec5.4 luasocket5.4 || true
-        # 校验冲突包未被默认选中
         for p in luci-app-weechat weechat-full weechat-minimal prosody; do
           if grep -qr "^Package/$p\$" feeds/*/ ; then
             echo "::notice::feeds 中存在 $p（已在我们配置里关闭）"
@@ -81,27 +79,21 @@ jobs:
       run: |
         [ -e files ] && mv files openwrt/files
         cd openwrt
-        # 以官方 360T7/MT7981 配置为底（含 DTS、ubootmod、recovery 设备定义）
         cp -f defconfig/mt7981-ax3000.config .config
-        # 追加定制层（含 CONFIG_TARGET_MULTI_PROFILE=n、7673、20260601、关闭 weechat/prosody）
         cat "$GITHUB_WORKSPACE/$CONFIG_FILE" >> .config
-        # 兜底：确保 MULTI_PROFILE 不会因官方底而残留 =y
         sed -i 's/^CONFIG_TARGET_MULTI_PROFILE=y/CONFIG_TARGET_MULTI_PROFILE=n/' .config
         sed -i 's/^# CONFIG_TARGET_MULTI_PROFILE is not set/CONFIG_TARGET_MULTI_PROFILE=n/' .config
-        # 兜底：确保冲突包关闭
         for p in luci-app-weechat weechat-full weechat-minimal prosody; do
           sed -i "s/^CONFIG_PACKAGE_$p=y/# CONFIG_PACKAGE_$p is not set/" .config
           grep -q "^# CONFIG_PACKAGE_$p is not set" .config || echo "# CONFIG_PACKAGE_$p is not set" >> .config
         done
         chmod +x "$GITHUB_WORKSPACE/$DIY_P2_SH"
         "$GITHUB_WORKSPACE/$DIY_P2_SH"
-        # 用 defconfig 重新计算单设备依赖（不是 olddefconfig，避免把 MULTI_PROFILE 再拉起）
         make defconfig
-        # 最终确认关键项
         echo "=== 关键配置校验 ==="
         grep -nE '^CONFIG_TARGET_MULTI_PROFILE=|^CONFIG_MTK_MT_WIFI_DRIVER_VERSION_7673=|^CONFIG_MTK_MT_WIFI_MT7981_20260601=|^CONFIG_TARGET_MEDIATEK_FILOGIC_DEVICE_QIHOO_360T7=|^# CONFIG_PACKAGE_(luci-app-weechat|weechat-full|weechat-minimal|prosody) is not set' .config
 
-    # ========== 6.5 SSH 编译调试（按需开启） ==========
+    # ========== 6.5 SSH 编译调试 ==========
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@main
       if: env.SSH_ACTIONS == 'true'
@@ -113,7 +105,7 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ========== 7. 下载依赖包（含重试与残缺清理） ==========
+    # ========== 7. 下载依赖包 ==========
     - name: Download package
       run: |
         cd openwrt
@@ -123,7 +115,6 @@ jobs:
           sleep 15
         done
         find dl -size -1024c -exec rm -f {} \;
-        # 校验关键 tarball
         for f in mt79xx_20250408-705eb4.tar.xz warp_20250408-5f71ec.tar.xz; do
           [ -s "dl/$f" ] || echo "::warning::关键 dl 包缺失: $f"
         done
@@ -155,16 +146,17 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ========== 10. 生成 Release Tag ==========
+    # ========== 10. 生成 Release Tag（✅ 修复核心） ==========
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success'
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
-        echo "status=success" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
-    # ========== 11. 上传固件到 Release ==========
+    # ========== 11. 上传固件到 Release（✅ 依赖已对齐） ==========
     - name: Upload firmware to release
+      id: upload
       uses: softprops/action-gh-release@master
       if: steps.tag.outputs.status == 'success'
       with:
@@ -174,10 +166,10 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ========== 12. 清理旧 Releases（保留最新 3 个） ==========
+    # ========== 12. 清理旧 Releases（✅ 上传成功后再清旧） ==========
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
-      if: steps.tag.outputs.status == 'success'
+      if: steps.upload.outcome == 'success'
       with:
         keep_latest: 3
         delete_tags: true

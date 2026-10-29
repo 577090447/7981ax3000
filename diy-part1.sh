@@ -18,7 +18,7 @@ git clone --depth=1 https://github.com/destan19/OpenAppFilter package/OpenAppFil
 git clone --depth=1 https://github.com/destan19/luci-app-harbor-file package/luci-app-harbor-file
 git clone --depth=1 https://github.com/laipeng668/luci-app-gecoosac package/luci-app-gecoosac
 git clone --depth=1 https://github.com/KFERMercer/luci-app-tcpdump.git package/luci-app-tcpdump
-git clone --depth=1 https://github.com/VizzleTF/luci-theme-footstrap package/luci-theme-footstrap
 git clone --depth=1 https://github.com/anothaDev/luci-theme-vantage package/luci-theme-vantage
+git clone --depth=1 https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
 
 echo "diy-part1.sh done."

@@ -10,11 +10,11 @@ sed -i 's/192.168.1.1/192.168.100.1/g' package/base-files/files/bin/config_gener
 # ===================== 修改主机名 =====================
 sed -i 's/ImmortalWrt/ARWRT/g' package/base-files/files/bin/config_generate
 
-# ===================== 默认主题：Aurora =====================
+# ===================== 默认主题：修改为 carbon（替换原 aurora） =====================
 mkdir -p package/base-files/files/etc/uci-defaults
 cat << 'EOF' > package/base-files/files/etc/uci-defaults/99-default-theme
 #!/bin/sh
-uci set luci.main.mediaurlbase='/luci-static/aurora'
+uci set luci.main.mediaurlbase='/luci-static/carbon'
 uci commit luci
 exit 0
 EOF
@@ -24,7 +24,6 @@ chmod +x package/base-files/files/etc/uci-defaults/99-default-theme
 sed -i 's/^CONFIG_PACKAGE_rust=y/# CONFIG_PACKAGE_rust is not set/' .config
 sed -i 's/^CONFIG_PACKAGE_librust=y/# CONFIG_PACKAGE_librust is not set/' .config
 sed -i 's/^CONFIG_RUBY_ENABLE_YJIT=y/# CONFIG_RUBY_ENABLE_YJIT is not set/' .config
-echo '# CONFIG_PACKAGE_rust is not set' >> .config
 
 # ===================== OpenClash 强制 binary core =====================
 sed -i 's/^CONFIG_OPENCLASH_CORE_TYPE=.*/CONFIG_OPENCLASH_CORE_TYPE="binary"/' .config

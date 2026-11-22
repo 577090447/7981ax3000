@@ -20,5 +20,6 @@ git clone --depth=1 https://github.com/laipeng668/luci-app-gecoosac package/luci
 git clone --depth=1 https://github.com/KFERMercer/luci-app-tcpdump.git package/luci-app-tcpdump
 git clone --depth=1 https://github.com/anothaDev/luci-theme-vantage package/luci-theme-vantage
 git clone --depth=1 https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
+src-git carbon https://github.com/guangyin53222/luci-theme-carbon.git
 
 echo "diy-part1.sh done."
